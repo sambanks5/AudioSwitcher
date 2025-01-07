@@ -1,11 +1,14 @@
-import sounddevice as sd
+import pyaudio
 import subprocess
 import os
 from tkinter import messagebox, Tk
 
 def get_default_output_device():
     try:
-        default_device = sd.query_devices(kind='output')
+        p = pyaudio.PyAudio()
+        default_device_index = p.get_default_output_device_info()['index']
+        default_device = p.get_device_info_by_index(default_device_index)
+        p.terminate()
         return default_device
     except Exception as e:
         messagebox.showerror("Error", f"Error getting default output device: {e}")
@@ -17,43 +20,29 @@ def switch_audio(device_name):
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Error switching audio device: {e}")
 
-def get_output_devices():
+def get_enabled_output_devices():
     try:
-        devices = sd.query_devices()
-        output_devices = [device for device in devices if device['max_output_channels'] > 0]
-        return output_devices
-    except Exception as e:
-        messagebox.showerror("Error", f"Error getting output devices: {e}")
-        return []
-
-def write_devices_to_file(devices, filename="devices.txt"):
-    try:
-        with open(filename, "w") as f:
-            for device in devices:
-                f.write(f"{device['name']} (Index: {device['index']})\n")
-    except Exception as e:
-        messagebox.showerror("Error", f"Error writing devices to file: {e}")
-
-def read_devices_from_file(filename="devices.txt"):
-    try:
-        with open(filename, "r") as f:
-            devices = [line.split(' (')[0].strip() for line in f.readlines()]
+        p = pyaudio.PyAudio()
+        devices = []
+        seen_devices = set()
+        for i in range(p.get_device_count()):
+            device = p.get_device_info_by_index(i)
+            if device['maxOutputChannels'] > 0 and "Primary Sound Driver" not in device['name'] and "Microsoft Sound Mapper" not in device['name']:
+                if device['name'] not in seen_devices:
+                    devices.append(device)
+                    seen_devices.add(device['name'])
+        p.terminate()
         return devices
     except Exception as e:
-        messagebox.showerror("Error", f"Error reading devices from file: {e}")
+        messagebox.showerror("Error", f"Error getting enabled output devices: {e}")
         return []
 
-def get_next_device(current_device_name, devices):
-    try:
-        current_index = devices.index(current_device_name)
-        next_index = (current_index + 1) % len(devices)
-        return devices[next_index]
-    except ValueError:
-        messagebox.showerror("Error", f"Current device name '{current_device_name}' not found in devices list.")
-        return devices[0]
-    except Exception as e:
-        messagebox.showerror("Error", f"Error getting next device: {e}")
-        return devices[0]
+def get_next_device(current_device_index, devices):
+    for i, device in enumerate(devices):
+        if device['index'] == current_device_index:
+            next_index = (i + 1) % len(devices)
+            return devices[next_index]
+    return devices[0]
 
 if __name__ == "__main__":
     root = Tk()
@@ -64,33 +53,23 @@ if __name__ == "__main__":
         messagebox.showerror("Error", "No default output device found. Exiting.")
         exit(1)
 
-    current_device_name = default_device['name'].split(' (')[0].strip()
-    print(f"Current device: {current_device_name}")
+    current_device_index = default_device['index']
+    print(f"Current device: {repr(default_device['name'])} (Index: {current_device_index})")
 
-    if not os.path.exists("devices.txt"):
-        output_devices = get_output_devices()
-        if not output_devices:
-            messagebox.showerror("Error", "No output devices found. Exiting.")
-            exit(1)
+    enabled_output_devices = get_enabled_output_devices()
+    if not enabled_output_devices:
+        messagebox.showerror("Error", "No enabled output devices found. Exiting.")
+        exit(1)
 
-        print("Available output devices:")
-        for device in output_devices:
-            print(f" - {device['name']} (Index: {device['index']})")
+    print("Enabled output devices:")
+    for device in enabled_output_devices:
+        print(f" - {repr(device['name'])} (Index: {device['index']})")
 
-        write_devices_to_file(output_devices)
-        messagebox.showinfo("Info", "devices.txt created. Please edit the file to include only the devices you want to switch between.")
-    else:
-        devices_from_file = read_devices_from_file()
-        if not devices_from_file:
-            messagebox.showerror("Error", "No devices found in devices.txt. Exiting.")
-            exit(1)
+    next_device = get_next_device(current_device_index, enabled_output_devices)
+    next_device_name = next_device['name'].split("(")[0].strip()    
+    next_device_index = next_device['index']
+    print(f"Switching from {repr(default_device['name'])} to {repr(next_device_name)} (Index: {next_device_index})")
 
-        print("Devices from file:")
-        for device in devices_from_file:
-            print(f" - {device}")
-
-        next_device = get_next_device(current_device_name, devices_from_file)
-        print(f"Switching from {current_device_name} to {next_device}")
-
-        # Switch!
-        switch_audio(next_device)
+    # Switch the audio device
+    switch_audio(next_device_name)
+    # messagebox.showinfo("Info", "Successfully switched")
