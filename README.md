@@ -11,5 +11,6 @@ Usage:
 - Download and open AudioSwitch.exe file. 
 
 - Remove audio output devices so two remain. 
+![image](https://github.com/user-attachments/assets/376ff8fe-e081-41cb-9099-6e67a7eb96b7)
 
 Open the exe to switch audio. Bind to a keyboard. 
